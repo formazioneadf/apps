@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trello JSON → CSV per Excel</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1f2933;
+      --muted: #5f6b76;
+      --border: #d9e0e7;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --ok-bg: #ecfdf3;
+      --ok-border: #86efac;
+      --ok-text: #166534;
+      --err-bg: #fff1f2;
+      --err-border: #fda4af;
+      --err-text: #9f1239;
+      --info-bg: #eff6ff;
+      --info-border: #bfdbfe;
+      --info-text: #1e40af;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+    }
+
+    .app {
+      width: min(820px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.06);
+      padding: 28px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .dropzone {
+      border: 2px dashed #aeb8c2;
+      border-radius: 14px;
+      padding: 36px 24px;
+      text-align: center;
+      background: #fafbfc;
+      transition: .15s ease;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover,
+    .dropzone:focus-visible {
+      border-color: var(--accent);
+      background: #f6f9ff;
+    }
+
+    .dropzone strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .dropzone span {
+      color: var(--muted);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .options {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafbfc;
+    }
+
+    .option-line {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .option-line input {
+      width: 18px;
+      height: 18px;
+    }
+
+    .option-help {
+      margin: 6px 0 0 28px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    .secondary {
+      background: #eef2f6;
+      color: var(--text);
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid;
+      line-height: 1.45;
+      display: none;
+      white-space: pre-line;
+    }
+
+    .status.show { display: block; }
+    .status.ok {
+      background: var(--ok-bg);
+      border-color: var(--ok-border);
+      color: var(--ok-text);
+    }
+    .status.error {
+      background: var(--err-bg);
+      border-color: var(--err-border);
+      color: var(--err-text);
+    }
+    .status.info {
+      background: var(--info-bg);
+      border-color: var(--info-border);
+      color: var(--info-text);
+    }
+
+    .details {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .details code {
+      color: var(--text);
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 5px;
+    }
+
+    .columns {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 6px 18px;
+      font-size: 13px;
+    }
+
+    .columns code {
+      display: inline-block;
+    }
+
+    @media (max-width: 560px) {
+      .app { padding: 20px; }
+      h1 { font-size: 24px; }
+      .dropzone { padding: 28px 16px; }
+      .btn-row { flex-direction: column; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>Trello JSON → CSV per Excel</h1>
+
+    <p class="subtitle">
+      Carica un export JSON completo di una bacheca Trello. La conversione avviene esclusivamente
+      nel browser: nessun dato viene inviato online.
+    </p>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Seleziona o trascina un export JSON Trello">
+      <strong>Trascina qui l'export JSON di Trello</strong>
+      <span>oppure fai clic per selezionarlo</span>
+    </div>
+
+    <input id="fileInput" type="file" accept=".json,application/json">
+
+    <div class="options">
+      <label class="option-line">
+        <input id="includeArchived" type="checkbox">
+        <strong>Includi anche le schede archiviate</strong>
+      </label>
+      <p class="option-help">
+        Disattivato per impostazione predefinita, come nel Python originale senza l'opzione
+        <code>--include-archived</code>.
+      </p>
+    </div>
+
+    <div class="btn-row">
+      <button id="selectBtn" class="secondary" type="button">Seleziona JSON Trello</button>
+      <button id="downloadBtn" class="primary" type="button" disabled>Scarica CSV per Excel</button>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <section class="details">
+      <strong>Comportamento mantenuto dal Python</strong><br>
+      Esporta le informazioni leggibili della bacheca, pulisce le descrizioni email,
+      riconosce la priorità, riassume checklist e allegati, esporta gli assegnatari,
+      individua l'ultimo operatore dalle azioni disponibili nel JSON, converte le date nel fuso
+      <code>Europe/Rome</code> e ordina le schede secondo lista e posizione Trello.
+
+      <div class="columns" aria-label="Colonne esportate">
+        <code>Bacheca</code>
+        <code>Lista</code>
+        <code>Scheda</code>
+        <code>Numero scheda</code>
+        <code>Stato</code>
+        <code>Origine</code>
+        <code>Mittente</code>
+        <code>Assegnatari</code>
+        <code>Ultimo operatore</code>
+        <code>Descrizione operativa</code>
+        <code>Priorità</code>
+        <code>Scadenza</code>
+        <code>Scadenza completata</code>
+        <code>Etichette</code>
+        <code>Allegati</code>
+        <code>Numero allegati</code>
+        <code>Checklist</code>
+        <code>Ultima attività</code>
+        <code>Link scheda</code>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const FIELDNAMES = [
+      "Bacheca",
+      "Lista",
+      "Scheda",
+      "Numero scheda",
+      "Stato",
+      "Origine",
+      "Mittente",
+      "Assegnatari",
+      "Ultimo operatore",
+      "Descrizione operativa",
+      "Priorità",
+      "Scadenza",
+      "Scadenza completata",
+      "Etichette",
+      "Allegati",
+      "Numero allegati",
+      "Checklist",
+      "Ultima attività",
+      "Link scheda"
+    ];
+
+    const SIGNATURE_MARKERS = [
+      "Andrea De Fazio",
+      "Direttore Operativo",
+      "Igeam Consulting",
+      "FULGARD",
+      "Attenzione:",
+      "Scarica le comunicazioni",
+      "Rispetta l'ambiente",
+      "Questo messaggio",
+      "Prenota un orario"
+    ];
+
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const selectBtn = document.getElementById("selectBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const includeArchived = document.getElementById("includeArchived");
+    const statusBox = document.getElementById("status");
+
+    let loadedBoard = null;
+    let sourceFileName = "trello_export";
+
+    function showStatus(type, message) {
+      statusBox.className = `status show ${type}`;
+      statusBox.textContent = message;
+    }
+
+    function resetState() {
+      loadedBoard = null;
+      sourceFileName = "trello_export";
+      downloadBtn.disabled = true;
+    }
+
+    function baseName(filename) {
+      return filename.replace(/\.[^.]+$/, "") || "trello_export";
+    }
+
+    function isObject(value) {
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function safeArray(value) {
+      return Array.isArray(value) ? value : [];
+    }
+
+    function cleanDescription(desc) {
+      if (!desc) return "";
+
+      const cleanedLines = [];
+      const lines = String(desc).split(/\r?\n/);
+
+      for (const rawLine of lines) {
+        let line = rawLine.trim();
+
+        if (!line) continue;
+
+        const lower = line.toLowerCase();
+
+        // Taglia la firma e tutto ciò che segue.
+        if (SIGNATURE_MARKERS.some(marker => lower.includes(marker.toLowerCase()))) {
+          break;
+        }
+
+        // Rimuove immagini inline e riferimenti tecnici email.
+        if (lower.includes("cid:image")) {
+          continue;
+        }
+
+        if (line.startsWith("[") && line.includes("]") && lower.includes("http")) {
+          continue;
+        }
+
+        // Normalizza bullet Microsoft/Markdown.
+        line = line.replace(/^[-*•]\s*/, "- ");
+        line = line.replace(/\s+/g, " ");
+        cleanedLines.push(line);
+      }
+
+      return cleanedLines.join(" | ").trim();
+    }
+
+    function extractPriority(text) {
+      if (!text) return "";
+
+      const match = String(text).match(/priorit[aà]\s*[:\-]?\s*(alta|media|bassa|critica|urgente)/i);
+      if (!match) return "";
+
+      const value = match[1].toLowerCase();
+      return value.charAt(0).toUpperCase() + value.slice(1);
+    }
+
+    function attachmentNames(card) {
+      const attachments = safeArray(card.attachments);
+      const names = [];
+
+      for (const attachment of attachments) {
+        if (!isObject(attachment)) continue;
+        const name = attachment.name || attachment.fileName;
+        if (name) names.push(String(name));
+      }
+
+      return names.join(", ");
+    }
+
+    function labelNames(card) {
+      const labels = safeArray(card.labels);
+      const names = [];
+
+      for (const label of labels) {
+        if (!isObject(label)) continue;
+
+        const name = label.name;
+        const color = label.color;
+
+        if (name) {
+          names.push(String(name));
+        } else if (color) {
+          names.push(`Etichetta ${color}`);
+        }
+      }
+
+      return names.join(", ");
+    }
+
+    function checklistSummary(board, cardId) {
+      const checklists = safeArray(board.checklists);
+      const parts = [];
+
+      for (const checklist of checklists) {
+        if (!isObject(checklist)) continue;
+        if (checklist.idCard !== cardId) continue;
+
+        const items = safeArray(checklist.checkItems);
+        const total = items.length;
+        const completed = items.filter(item => isObject(item) && item.state === "complete").length;
+        const name = checklist.name || "Checklist";
+
+        parts.push(`${name}: ${completed}/${total} completati`);
+      }
+
+      return parts.join(" | ");
+    }
+
+    function memberDisplayName(member) {
+      if (!isObject(member)) return "";
+
+      // Preferisce il nome completo, poi displayName, poi username.
+      const name =
+        member.fullName ||
+        member.displayName ||
+        member.username ||
+        "";
+
+      return String(name || "");
+    }
+
+    function buildMembersById(board) {
+      const map = new Map();
+
+      for (const member of safeArray(board.members)) {
+        if (!isObject(member) || !member.id) continue;
+        map.set(String(member.id), memberDisplayName(member));
+      }
+
+      return map;
+    }
+
+    function assignedMembers(card, membersById) {
+      const names = [];
+
+      // Struttura tipica dell'export Trello: idMembers sulla card.
+      for (const memberId of safeArray(card.idMembers)) {
+        const name = membersById.get(String(memberId));
+        if (name && !names.includes(name)) names.push(name);
+      }
+
+      // Fallback per eventuali export che includono direttamente gli oggetti member.
+      for (const member of safeArray(card.members)) {
+        const name = memberDisplayName(member);
+        if (name && !names.includes(name)) names.push(name);
+      }
+
+      return names.join(", ");
+    }
+
+    function lastOperator(board, cardId, membersById) {
+      let latestAction = null;
+      let latestTime = -Infinity;
+
+      for (const action of safeArray(board.actions)) {
+        if (!isObject(action)) continue;
+
+        const data = isObject(action.data) ? action.data : {};
+        const actionCard = isObject(data.card) ? data.card : {};
+
+        if (String(actionCard.id || "") !== String(cardId || "")) continue;
+
+        const dateValue = action.date ? Date.parse(String(action.date)) : NaN;
+        const time = Number.isNaN(dateValue) ? -Infinity : dateValue;
+
+        // Se la data è valida, prende davvero l'azione più recente.
+        // Se nessuna data è valida, conserva la prima azione pertinente trovata.
+        if (latestAction === null || time > latestTime) {
+          latestAction = action;
+          latestTime = time;
+        }
+      }
+
+      if (!latestAction) return "";
+
+      // Negli export Trello il creatore dell'azione può essere già incorporato.
+      const embeddedName = memberDisplayName(latestAction.memberCreator);
+      if (embeddedName) return embeddedName;
+
+      // Fallback via idMemberCreator -> board.members.
+      const creatorId = latestAction.idMemberCreator;
+      if (creatorId) {
+        return membersById.get(String(creatorId)) || "";
+      }
+
+      return "";
+    }
+
+    function formatTrelloDate(value) {
+      if (!value) return "";
+
+      try {
+        const date = new Date(String(value));
+        if (Number.isNaN(date.getTime())) return String(value);
+
+        // Usa il motore Intl del browser per il fuso Europe/Rome,
+        // compresa l'ora legale.
+        const parts = new Intl.DateTimeFormat("it-IT", {
+          timeZone: "Europe/Rome",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23"
+        }).formatToParts(date);
+
+        const get = type => parts.find(p => p.type === type)?.value || "";
+
+        return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}`;
+      } catch {
+        // Come nel Python: meglio mantenere il valore originale che perderlo.
+        return String(value);
+      }
+    }
+
+    function boardToRows(board, includeArchivedCards) {
+      const boardName = board.name || "";
+      const lists = safeArray(board.lists);
+      const cards = safeArray(board.cards);
+
+      const listsById = new Map();
+      const listOrder = new Map();
+      const membersById = buildMembersById(board);
+
+      for (const item of lists) {
+        if (!isObject(item) || !item.id) continue;
+        listsById.set(item.id, item.name || "");
+        listOrder.set(item.id, Number(item.pos) || 0);
+      }
+
+      const sortableRows = [];
+
+      for (const card of cards) {
+        if (!isObject(card)) continue;
+
+        const isClosed = Boolean(card.closed);
+        if (isClosed && !includeArchivedCards) continue;
+
+        const description = cleanDescription(card.desc);
+        const priority = extractPriority(description);
+        const attachments = safeArray(card.attachments);
+
+        const badges = isObject(card.badges) ? card.badges : {};
+        const origin = badges.externalSource === "EMAIL"
+          ? "Email"
+          : String(card.externalSource || "");
+
+        const row = {
+          "Bacheca": String(boardName),
+          "Lista": String(listsById.get(card.idList) || ""),
+          "Scheda": String(card.name || ""),
+          "Numero scheda": String(card.idShort ?? ""),
+          "Stato": isClosed ? "Archiviata" : "Aperta",
+          "Origine": origin,
+          "Mittente": String(card.sourceEmail || ""),
+          "Assegnatari": assignedMembers(card, membersById),
+          "Ultimo operatore": lastOperator(board, card.id, membersById),
+          "Descrizione operativa": description,
+          "Priorità": priority,
+          "Scadenza": formatTrelloDate(card.due),
+          "Scadenza completata": card.due
+            ? (card.dueComplete ? "Sì" : "No")
+            : "",
+          "Etichette": labelNames(card),
+          "Allegati": attachmentNames(card),
+          "Numero allegati": String(attachments.length),
+          "Checklist": checklistSummary(board, String(card.id || "")),
+          "Ultima attività": formatTrelloDate(card.dateLastActivity),
+          "Link scheda": String(card.url || card.shortUrl || "")
+        };
+
+        sortableRows.push({
+          listPos: listOrder.get(card.idList) || 0,
+          cardPos: Number(card.pos) || 0,
+          row
+        });
+      }
+
+      sortableRows.sort((a, b) => {
+        if (a.listPos !== b.listPos) return a.listPos - b.listPos;
+        return a.cardPos - b.cardPos;
+      });
+
+      return sortableRows.map(item => item.row);
+    }
+
+    function csvEscape(value) {
+      if (value === null || value === undefined) return "";
+
+      const text = String(value);
+
+      if (/[;"\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+
+      return text;
+    }
+
+    function rowsToCsv(rows) {
+      const lines = [];
+      lines.push(FIELDNAMES.map(csvEscape).join(";"));
+
+      for (const row of rows) {
+        lines.push(FIELDNAMES.map(field => csvEscape(row[field] ?? "")).join(";"));
+      }
+
+      return lines.join("\r\n");
+    }
+
+    async function handleFile(file) {
+      resetState();
+
+      if (!file) {
+        showStatus("error", "Nessun file selezionato.");
+        return;
+      }
+
+      if (!file.name.toLowerCase().endsWith(".json")) {
+        showStatus("error", "Il file selezionato non ha estensione .json.");
+        return;
+      }
+
+      showStatus("info", `Lettura di "${file.name}"...`);
+
+      try {
+        let text = await file.text();
+
+        // Equivalente pratico di utf-8-sig: rimuove il BOM iniziale, se presente.
+        text = text.replace(/^\uFEFF/, "");
+
+        const board = JSON.parse(text);
+
+        if (!isObject(board)) {
+          throw new Error("Mi aspettavo un JSON Trello di bacheca, quindi un oggetto principale.");
+        }
+
+        const cards = safeArray(board.cards);
+        const lists = safeArray(board.lists);
+
+        loadedBoard = board;
+        sourceFileName = baseName(file.name);
+        downloadBtn.disabled = false;
+
+        const openCards = cards.filter(card => isObject(card) && !card.closed).length;
+        const archivedCards = cards.filter(card => isObject(card) && Boolean(card.closed)).length;
+
+        showStatus(
+          "ok",
+          `JSON Trello valido.\nBacheca: ${board.name || "(senza nome)"}\nListe: ${lists.length}\nSchede aperte: ${openCards}\nSchede archiviate: ${archivedCards}`
+        );
+      } catch (error) {
+        resetState();
+
+        const message = error instanceof SyntaxError
+          ? "JSON non valido: controlla che il file sia un export JSON completo e ben formato."
+          : (error.message || "Errore durante la lettura del file.");
+
+        showStatus("error", message);
+      }
+    }
+
+    function downloadCsv() {
+      if (!loadedBoard) return;
+
+      const rows = boardToRows(loadedBoard, includeArchived.checked);
+      const csv = rowsToCsv(rows);
+
+      const blob = new Blob(["\uFEFF", csv], {
+        type: "text/csv;charset=utf-8"
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${sourceFileName}.csv`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      const archivedText = includeArchived.checked
+        ? " incluse le schede archiviate"
+        : " escluse le schede archiviate";
+
+      showStatus(
+        "ok",
+        `CSV creato: "${sourceFileName}.csv".\nSchede esportate: ${rows.length},${archivedText}.`
+      );
+    }
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    selectBtn.addEventListener("click", () => fileInput.click());
+
+    dropzone.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    fileInput.addEventListener("change", () => {
+      handleFile(fileInput.files[0]);
+      fileInput.value = "";
+    });
+
+    ["dragenter", "dragover"].forEach(eventName => {
+      dropzone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(eventName => {
+      dropzone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropzone.classList.remove("dragover");
+      });
+    });
+
+    dropzone.addEventListener("drop", event => {
+      const file = event.dataTransfer.files[0];
+      handleFile(file);
+    });
+
+    downloadBtn.addEventListener("click", downloadCsv);
+
+    includeArchived.addEventListener("change", () => {
+      if (!loadedBoard) return;
+
+      const rows = boardToRows(loadedBoard, includeArchived.checked);
+      showStatus(
+        "info",
+        `Opzione aggiornata: al prossimo download verranno esportate ${rows.length} schede.`
+      );
+    });
+  </script>
+</body>
+</html>
